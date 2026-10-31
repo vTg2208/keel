@@ -1,0 +1,24 @@
+name: payops-jenkins
+services:
+  jenkins:
+    build: .
+    # Local trusted-code lab: Docker socket grants host control.
+    user: '0'
+    ports: ['127.0.0.1:8080:8080']
+    environment:
+      JAVA_OPTS: '-Xmx512m -Djenkins.install.runSetupWizard=false'
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_PASSWORD:?Run python ops.py init}
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../:/source:ro
+      - ./init.groovy:/usr/share/jenkins/ref/init.groovy.d/payops.groovy:ro
+    networks: [kind]
+    mem_limit: 1g
+    restart: unless-stopped
+volumes:
+  jenkins-home:
+networks:
+  kind:
+    external: true
+    name: kind
