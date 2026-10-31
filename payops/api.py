@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from payops.db import make_sessions
 from payops.domain import IdempotencyConflict, create_payment
+from payops.lab.routes import router as lab_router
 from payops.models import Event, Payment
 from payops.schemas import EventResponse, PaymentRequest, PaymentResponse
 from payops.telemetry import LATENCY, REQUESTS, configure_logging, log
@@ -27,8 +28,9 @@ def create_app(sessions=None):
             app.state.sessions.kw["bind"].dispose()
 
     app = FastAPI(
-        title="PayOps · Local Payment Reliability Lab", version="0.1.0", lifespan=lifespan
+        title="Keel · Local Payment Reliability Lab", version="0.2.0", lifespan=lifespan
     )
+    app.include_router(lab_router)
     static = Path(__file__).with_name("static")
     app.mount("/assets", StaticFiles(directory=static), name="assets")
 

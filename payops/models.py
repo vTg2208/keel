@@ -63,3 +63,10 @@ class ProviderResult(Base):
     request_hash: Mapped[str] = mapped_column(String(64))
     outcome: Mapped[str] = mapped_column(String(16))
     reference: Mapped[str] = mapped_column(String(100))
+
+
+class LabRun(Base):
+    __tablename__ = "lab_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=identifier)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    report: Mapped[dict] = mapped_column(JSON)
