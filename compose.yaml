@@ -1,0 +1,149 @@
+name: payops
+x-app: &app
+  image: payops:${IMAGE_TAG:-dev}
+  restart: unless-stopped
+  env_file: .env
+  environment: &app-env
+    DATABASE_URL: postgresql+psycopg://payops:${POSTGRES_PASSWORD:?Run python ops.py init}@postgres:5432/payops
+    RABBITMQ_URL: amqp://payops:${RABBITMQ_PASSWORD:?Run python ops.py init}@rabbitmq:5672/%2F
+    PROVIDER_URL: http://simulator:8001
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+    rabbitmq: {condition: service_healthy}
+  mem_limit: 256m
+  cpus: 0.5
+  logging: &logging
+    driver: json-file
+    options: {max-size: 10m, max-file: '3'}
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: payops
+      POSTGRES_DB: payops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python ops.py init}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U payops -d payops']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+    logging: *logging
+  rabbitmq:
+    image: rabbitmq:4.1.4-management
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: payops
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run python ops.py init}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '-rabbitmq_prometheus return_per_object_metrics true'
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports: ['127.0.0.1:15672:15672']
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 512m
+    logging: *logging
+  migrate:
+    <<: *app
+    build: .
+    restart: 'no'
+    command: [python, -m, payops.db]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *app
+    ports: ['127.0.0.1:8000:8000']
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://localhost:8000/readyz")']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  simulator:
+    <<: *app
+    command: [uvicorn, 'payops.simulator:app', --host, 0.0.0.0, --port, '8001']
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://localhost:8001/readyz")']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  publisher:
+    <<: *app
+    command: [python, -m, payops.publisher]
+  worker:
+    <<: *app
+    command: [python, -m, payops.worker]
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=3d, --storage.tsdb.retention.size=512MB]
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ['127.0.0.1:9090:9090']
+    mem_limit: 384m
+    logging: *logging
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports: ['127.0.0.1:9093:9093']
+    mem_limit: 128m
+    logging: *logging
+  grafana:
+    image: grafana/grafana:12.2.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run python ops.py init}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['127.0.0.1:3000:3000']
+    mem_limit: 256m
+    logging: *logging
+  loki:
+    image: grafana/loki:3.5.5
+    profiles: [logging]
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/local-config.yaml]
+    volumes:
+      - ./infra/monitoring/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    mem_limit: 384m
+    logging: *logging
+  alloy:
+    image: grafana/alloy:v1.11.0
+    profiles: [logging]
+    restart: unless-stopped
+    user: '0'
+    command: [run, --storage.path=/var/lib/alloy, /etc/alloy/config.alloy]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy
+    mem_limit: 192m
+    logging: *logging
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
+  loki-data:
+  alloy-data:

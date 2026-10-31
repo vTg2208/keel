@@ -1,0 +1,6 @@
+# Failure exercise: schema migration still works, API import deliberately fails.
+ARG BASE=payops:dev
+FROM ${BASE}
+USER root
+RUN printf 'raise RuntimeError("intentional failed release exercise")\n' > /app/payops/api.py
+USER app
