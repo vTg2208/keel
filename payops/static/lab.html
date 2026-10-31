@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Keel · Failure discovery</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/assets/lab.css" />
+  <script type="module" src="/assets/lab.js"></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">Skip to experiment results</a>
+  <header class="masthead">
+    <a class="wordmark" href="/lab" aria-label="Keel failure discovery home"><span aria-hidden="true">⌁</span> keel</a>
+    <span class="masthead-label">Payment reliability / Failure discovery</span>
+    <a href="/">Payment console <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="layout">
+    <aside class="sidebar" aria-label="Campaign configuration">
+      <div class="section-label">01 / Configure</div>
+      <h2>Put recovery<br />to the test.</h2>
+      <p class="sidebar-intro">Introduce a fault. Find the sequence that exposes it. Keep the evidence.</p>
+      <form id="campaign-form">
+        <fieldset id="mutation-options"><legend>Faults to investigate</legend><p>Loading fault catalog…</p></fieldset>
+        <div class="input-pair">
+          <label>Seed<input id="seed" type="number" value="42" min="0" max="2147483647" required /></label>
+          <label>Search budget<input id="budget" type="number" value="8" min="1" max="32" required /></label>
+        </div>
+        <p class="input-note">Schedules per fault · up to 32 events each</p>
+        <button class="run-button" id="run-campaign" type="submit" disabled>Run discovery <span aria-hidden="true">→</span></button>
+      </form>
+      <div id="engine-status" class="engine-status" role="status">Checking controller…</div>
+      <div class="history-head"><span class="section-label">Saved campaigns</span><button id="refresh-history" class="quiet" aria-label="Refresh saved campaigns">↻</button></div>
+      <div id="history" class="history"><p class="muted">Loading history…</p></div>
+      <p class="isolation-note"><span class="status-dot" aria-hidden="true"></span> Isolated by construction<br /><span>Fresh SQLite per replay. No live payments touched.</span></p>
+    </aside>
+    <main id="workspace" tabindex="-1">
+      <div class="workspace-heading"><div><div class="section-label">02 / Investigate</div><h1>Find the fault line.</h1><p>Discover the smallest sequence that breaks a payment guarantee.</p></div><span class="lab-tag">Experimental lab</span></div>
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <div id="progress" class="notice progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><div><strong>Exploring recovery sequences…</strong><p>Go is coordinating isolated Python executions, checking invariants and removing unnecessary events.</p></div></div>
+      <section id="empty" class="empty-state" aria-label="Getting started">
+        <div class="empty-number" aria-hidden="true">↳</div>
+        <h2>A healthy process can still<br />produce an incorrect payment.</h2>
+        <p>Start a campaign to test the boundaries between accepting work, charging a provider and recording the result.</p>
+        <ol class="method"><li><b>01</b><strong>Generate</strong><span>Seeded event schedules</span></li><li><b>02</b><strong>Expose</strong><span>Check payment guarantees</span></li><li><b>03</b><strong>Reduce</strong><span>Remove irrelevant events</span></li><li><b>04</b><strong>Preserve</strong><span>Export an executable test</span></li></ol>
+      </section>
+      <section id="results" hidden aria-label="Campaign results">
+        <div class="report-heading"><div><span class="section-label">Campaign evidence</span><p id="report-meta" class="mono"></p></div><div class="downloads"><a id="download-json">JSON ↗</a><a id="download-markdown">Report ↗</a><a id="download-pytest">Regression tests ↓</a></div></div>
+        <div class="metrics"><div><span>Faults exposed</span><strong id="metric-killed">—</strong></div><div><span>Events removed</span><strong id="metric-reduction">—</strong></div><div><span>Isolated executions</span><strong id="metric-executions">—</strong></div><div><span>Baseline comparisons</span><strong id="metric-baseline">—</strong></div></div>
+        <div class="findings-heading"><h2>Faults under investigation</h2><span>Select a finding to inspect its evidence</span></div>
+        <div id="findings" class="findings" role="group" aria-label="Select a finding"></div>
+        <article id="finding-detail" class="finding-detail" hidden>
+          <div class="detail-heading"><div><span id="finding-boundary" class="section-label"></span><h2 id="finding-title"></h2></div><span id="minimal-badge" class="minimal-badge">1-minimal reproduction</span></div>
+          <div id="finding-explanation" class="explanation"></div>
+          <div id="counterexample">
+            <div class="trace-heading"><h3>Execution sequence</h3><div id="trace-views" class="segmented" role="group" aria-label="Choose execution view"><button data-view="minimal" aria-pressed="true">Reduced</button><button data-view="original" aria-pressed="false">Original</button><button data-view="baseline" aria-pressed="false">Correct implementation</button></div></div>
+            <p id="trace-caption" class="muted"></p>
+            <ol id="trace" class="trace" aria-label="Execution events"></ol>
+            <div class="state-heading"><h3 id="step-title">State after event</h3><span id="step-applied"></span></div>
+            <p id="step-note"></p>
+            <div id="state-grid" class="state-grid"></div>
+            <details class="raw-evidence"><summary>Inspect raw execution evidence</summary><pre id="raw-state"></pre></details>
+            <div class="replay-row"><button id="replay" class="secondary">Replay reduced sequence ↻</button><span id="replay-status" role="status"></span></div>
+          </div>
+        </article>
+      </section>
+      <footer class="scope-note"><strong>What this proves</strong><p>Real payment logic and provider decisions, with a controlled broker and lease expiry. Reduction preserves one invariant and is minimal under single-event deletion; it is not a globally shortest proof. A fault that survives the search is unresolved, not certified safe.</p><span>Go / orchestration <i>·</i> Python / execution <i>·</i> JavaScript / evidence</span></footer>
+      <noscript><p class="notice error">Enable JavaScript to run the workbench, or use <code>python -m payops.lab run</code>.</p></noscript>
+    </main>
+  </div>
+</body>
+</html>
