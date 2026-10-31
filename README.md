@@ -4,6 +4,31 @@ Keel combines a payment operations lab with a **failure-discovery workbench**: i
 a deliberately faulty recovery adapter, find a sequence that breaks a payment guarantee,
 reduce it, compare it against the correct implementation, and export a regression test.
 
+## Watch the demos
+
+These are captioned recordings of actual local runs with synthetic payments. Click a
+preview to open the full MP4 video; the animated previews play directly in the README.
+
+**Payment processing and recovery · 59 seconds** — submit a payment, recover from a temporary
+provider failure, replay the same request safely, then stop and restart the real
+Compose worker while an accepted payment waits for processing.
+
+[![Watch payment processing and worker recovery](docs/demos/keel-payment-recovery.gif)](docs/demos/keel-payment-recovery.mp4)
+
+[Watch the full payment demo (MP4)](docs/demos/keel-payment-recovery.mp4)
+
+**Failure discovery · 60 seconds** — expose four deliberate defects, inspect a duplicate provider
+effect, compare it with the correct implementation, reduce the failure to six events,
+replay it, and export an executable regression test.
+
+[![Watch failure discovery, reduction and baseline comparison](docs/demos/keel-failure-discovery.gif)](docs/demos/keel-failure-discovery.mp4)
+
+[Watch the full failure-discovery demo (MP4)](docs/demos/keel-failure-discovery.mp4)
+
+The failure-discovery demo uses a controlled in-memory broker; the payment-recovery
+demo stops an actual Docker Compose worker. Both recordings are silent, with explanatory
+captions. [Recording details and reproduction](docs/demos/README.md).
+
 ## Failure discovery: start here
 
 Requires Python 3.11+ and Go 1.25+. Use the existing virtual environment below or create
