@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Payments · PayOps</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/style.css" />
+    <script type="module" src="/assets/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to payments</a>
+    <header class="header">
+      <a class="brand" href="/" aria-label="PayOps home"
+        ><span class="brand-mark" aria-hidden="true"></span>payops</a
+      >
+      <span class="environment">Local payment lab</span>
+      <nav aria-label="Main navigation">
+        <a class="active" href="/" aria-current="page">Payments</a>
+        <a
+          data-service="3000"
+          data-path="/d/payops"
+          target="_blank"
+          rel="noopener"
+          >Monitoring <span aria-hidden="true">↗</span></a
+        >
+        <a href="/docs" target="_blank" rel="noopener"
+          >API reference <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+    <main id="main">
+      <div class="page-heading">
+        <div>
+          <h1>Payments</h1>
+          <p>Submit a test payment and follow its processing history.</p>
+        </div>
+        <button class="primary" id="new-payment">
+          New payment <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="connection">
+        <span id="connection"
+          ><i class="dot pending"></i>Connecting to API…</span
+        ><span id="updated">Waiting for data</span
+        ><label class="checkbox"
+          ><input id="auto-refresh" type="checkbox" checked /> Auto
+          refresh</label
+        ><button class="text-button" id="refresh">Refresh</button>
+      </div>
+      <div id="list-error" class="notice error" role="alert" hidden></div>
+      <div id="announcement" class="notice" role="status" hidden></div>
+      <div class="toolbar">
+        <div class="search">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="m16 16 5 5" /></svg
+          ><input
+            id="search"
+            type="search"
+            aria-label="Search payments"
+            placeholder="Search by payment ID or provider reference"
+          />
+        </div>
+        <select id="status-filter" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="retrying">Retrying</option>
+          <option value="succeeded">Succeeded</option>
+          <option value="rejected">Rejected</option>
+          <option value="failed">Failed</option>
+          <option value="unknown">Unknown</option></select
+        ><span id="count" class="count" aria-live="polite">— payments</span>
+      </div>
+      <div
+        class="table-scroll"
+        role="region"
+        aria-label="Payments ledger"
+        tabindex="0"
+      >
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Payment ID</th>
+              <th scope="col">
+                Created <span class="sort" aria-hidden="true">↓</span>
+              </th>
+              <th scope="col" class="amount">Amount</th>
+              <th scope="col">Test case</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="attempts">Attempts</th>
+            </tr>
+          </thead>
+          <tbody id="payments">
+            <tr>
+              <td colspan="6" class="empty">Loading payments…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note" id="table-note">
+        Latest 100 payments · Times shown in your local timezone · All amounts
+        are simulated.
+      </p>
+      <noscript
+        ><p class="notice error">
+          Enable JavaScript to use the payment console. The
+          <a href="/docs">API reference</a> is also available.
+        </p></noscript
+      >
+    </main>
+    <footer>
+      <span>PayOps <span class="divider">/</span> Local development</span>
+      <div>
+        <a
+          data-service="3000"
+          data-path="/d/payops"
+          target="_blank"
+          rel="noopener"
+          >Grafana ↗</a
+        ><a data-service="9093" target="_blank" rel="noopener"
+          >Alertmanager ↗</a
+        >
+      </div>
+    </footer>
+    <dialog id="drawer" aria-labelledby="drawer-title">
+      <div class="drawer-header">
+        <h2 id="drawer-title">New payment</h2>
+        <button id="close-drawer" class="icon-button" aria-label="Close panel">
+          ×
+        </button>
+      </div>
+      <section id="create-panel">
+        <p class="drawer-intro">
+          Send a simulated payment through the local pipeline.
+        </p>
+        <form id="payment-form">
+          <div class="form-row">
+            <div>
+              <label for="amount">Amount</label
+              ><input
+                id="amount"
+                name="amount"
+                inputmode="decimal"
+                placeholder="125.00"
+                required
+                autocomplete="off"
+                aria-describedby="amount-hint"
+              /><small id="amount-hint">0.01 to 1,000,000.00</small>
+            </div>
+            <div>
+              <label for="currency">Currency</label
+              ><select id="currency" name="currency">
+                <option>INR</option>
+                <option>USD</option>
+                <option>EUR</option>
+              </select>
+            </div>
+          </div>
+          <label for="scenario">Test case</label
+          ><select id="scenario" name="scenario">
+            <option value="success">Success</option>
+            <option value="flaky">Temporary failure</option>
+            <option value="timeout_after_success">Timeout after success</option>
+            <option value="decline">Provider decline</option>
+            <option value="timeout">Provider timeout</option>
+          </select>
+          <p id="scenario-hint" class="field-hint"></p>
+          <details id="request-options">
+            <summary>Request options</summary>
+            <label for="idempotency-key">Idempotency key</label
+            ><input
+              class="mono"
+              id="idempotency-key"
+              name="key"
+              required
+              maxlength="200"
+              autocomplete="off"
+            /><small
+              >The same key and input return the same payment. Keep this key
+              when retrying an interrupted request.</small
+            ><button id="new-key" type="button" class="text-button">
+              Generate a new key
+            </button>
+          </details>
+          <div id="form-error" role="alert" class="notice error" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="primary" id="submit-payment">
+              Submit payment</button
+            ><button type="button" id="cancel-create">Cancel</button>
+          </div>
+          <p class="form-note">Test environment. No money is moved.</p>
+        </form>
+      </section>
+      <section id="detail-panel" hidden>
+        <div id="detail-error" class="notice error" role="alert" hidden></div>
+        <div id="payment-detail"></div>
+        <div class="history-heading">
+          <h3>Event history</h3>
+          <span id="event-count"></span>
+        </div>
+        <p id="events-error" class="notice error" role="alert" hidden></p>
+        <ol id="events" class="timeline"></ol>
+      </section>
+    </dialog>
+  </body>
+</html>
