@@ -6,8 +6,8 @@ changes to the application. There is no audio track.
 
 | Recording | Duration | Demonstrated behavior |
 |---|---|---|
-| [Payment recovery](keel-payment-recovery.mp4) | 59 seconds | Provider retry, API idempotency, actual Compose worker outage, pending work, recovery with one processing attempt |
-| [Failure discovery](keel-failure-discovery.mp4) | 60 seconds | Seed 42 / budget 4, four faults detected, original/reduced execution, provider effects, passing baseline, replay, regression export and persistent history |
+| [Payment recovery](keel-payment-recovery.mp4) | 64 seconds | Animated payment journey, provider retry, API idempotency, actual Compose worker outage, pending work, recovery with one processing attempt |
+| [Failure discovery](keel-failure-discovery.mp4) | 65 seconds | Running screen with elapsed time, seed 42 / budget 4, four faults detected, original/reduced execution, provider effects, passing baseline, replay, regression export and persistent history |
 
 The GIF files are short animated excerpts for GitHub Markdown compatibility. The MP4
 files contain complete recordings, encoded as H.264 with a front-loaded playback index.

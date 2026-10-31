@@ -7,6 +7,7 @@
     <title>Payments · Keel</title>
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/style.css" />
+    <link rel="stylesheet" href="/assets/motion.css" />
     <script type="module" src="/assets/app.js"></script>
   </head>
   <body>
@@ -41,6 +42,22 @@
           New payment <span aria-hidden="true">+</span>
         </button>
       </div>
+      <section class="payment-journey" id="payment-journey" data-tone="neutral" data-active="false" aria-label="Payment journey">
+        <div class="journey-overview">
+          <div class="journey-symbol" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none"><rect x="7" y="13" width="34" height="25" rx="5"/><path d="M8 20h32M14 30h7M13 13V9h22v4"/><path class="journey-check" d="m16 25 6 6 11-12"/></svg>
+          </div>
+          <div class="journey-copy"><span class="eyebrow">Payment in motion</span><h2 id="journey-heading">Ready for your next payment</h2><p id="journey-copy">Submit a synthetic payment to follow its journey.</p></div>
+          <div class="journey-value"><strong id="journey-amount">—</strong><span id="journey-label">Synthetic payments only</span></div>
+        </div>
+        <ol class="journey-steps" id="journey-steps" aria-label="Payment stages">
+          <li data-state="upcoming"><span class="step-marker" aria-hidden="true">1</span><span>Accepted</span></li>
+          <li data-state="upcoming"><span class="step-marker" aria-hidden="true">2</span><span>Waiting</span></li>
+          <li data-state="upcoming"><span class="step-marker" aria-hidden="true">3</span><span>Provider</span></li>
+          <li data-state="upcoming"><span class="step-marker" aria-hidden="true">4</span><span>Result</span></li>
+        </ol>
+        <div class="journey-footer"><span id="journey-live" role="status">Select or submit a payment to follow its progress.</span><button class="text-button" id="journey-open" hidden>View payment ↗</button></div>
+      </section>
       <div class="connection">
         <span id="connection"
           ><i class="dot pending"></i>Connecting to API…</span
@@ -50,6 +67,7 @@
           refresh</label
         ><button class="text-button" id="refresh">Refresh</button>
       </div>
+      <div id="ledger-progress" role="status"><span class="activity-ring" aria-hidden="true"></span> Loading your payments…</div>
       <div id="list-error" class="notice error" role="alert" hidden></div>
       <div id="announcement" class="notice" role="status" hidden></div>
       <div class="toolbar">
@@ -80,6 +98,8 @@
         role="region"
         aria-label="Payments ledger"
         tabindex="0"
+        id="ledger"
+        aria-busy="true"
       >
         <table>
           <thead>
@@ -96,7 +116,7 @@
           </thead>
           <tbody id="payments">
             <tr>
-              <td colspan="6" class="empty">Loading payments…</td>
+              <td colspan="6" class="empty"><span class="sr-only">Loading payments…</span><div class="skeleton-stack" aria-hidden="true"><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div></td>
             </tr>
           </tbody>
         </table>
@@ -137,6 +157,7 @@
         <p class="drawer-intro">
           Send a simulated payment through the local pipeline.
         </p>
+        <div id="submission-progress" hidden></div>
         <form id="payment-form">
           <div class="form-row">
             <div>
@@ -196,6 +217,7 @@
         </form>
       </section>
       <section id="detail-panel" hidden>
+        <div id="detail-progress" hidden></div>
         <div id="detail-error" class="notice error" role="alert" hidden></div>
         <div id="payment-detail"></div>
         <div class="history-heading">

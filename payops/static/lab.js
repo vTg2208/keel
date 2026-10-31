@@ -1,3 +1,4 @@
+import { startActivity, busyButton, skeleton } from "./feedback.mjs";
 const $ = (id) => document.getElementById(id);
 let catalog = {};
 let report = null;
@@ -6,6 +7,12 @@ let view = "minimal";
 let stepIndex = 0;
 let running = false;
 let selectionVersion = 0;
+let reportLoadVersion = 0;
+let historyLoadVersion = 0;
+let stopReportFeedback = () => {};
+let stopReplayFeedback = () => {};
+let replayBusy = false;
+let controllerReady = false;
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -42,6 +49,9 @@ function percentRemoved(findings) {
   return before ? `${Math.round(100 * (before - after) / before)}%` : "—";
 }
 function renderReport(data) {
+  reportLoadVersion++;
+  stopReportFeedback();
+  $("results").setAttribute("aria-busy", "false");
   report = data;
   $("empty").hidden = true;
   $("results").hidden = false;
@@ -71,11 +81,12 @@ function renderReport(data) {
   selectFinding(0);
 }
 function selectFinding(index) {
+  stopReplayFeedback();
   selectionVersion++;
   selected = index;
   view = "minimal";
   $("replay-status").textContent = "";
-  $("replay").disabled = false;
+  busyButton($("replay"), replayBusy, replayBusy ? "Replay running…" : "Replay reduced sequence ↻");
   const finding = report.findings[index];
   const info = catalog[finding.mutation] || {};
   [...$("findings").children].forEach((button, i) => button.setAttribute("aria-pressed", String(i === index)));
@@ -152,16 +163,33 @@ function renderTrace() {
   $("raw-state").textContent = JSON.stringify(step, null, 2);
 }
 async function loadReport(id) {
-  const version = ++selectionVersion;
+  const version = ++reportLoadVersion;
+  selectionVersion++;
+  stopReportFeedback();
+  const stop = startActivity($("report-progress"), "Loading saved campaign",
+    "Fetching its findings, execution traces and baseline evidence.");
+  stopReportFeedback = stop;
+  $("results").setAttribute("aria-busy", "true");
   $("error").hidden = true;
   try {
     const data = await request(`/api/lab/campaigns/${encodeURIComponent(id)}`);
-    if (version === selectionVersion) { renderReport(data); await refreshHistory(); }
-  } catch (error) { if (version === selectionVersion) showError(error); }
+    if (version === reportLoadVersion) { renderReport(data); await refreshHistory(); }
+  } catch (error) { if (version === reportLoadVersion) showError(error); }
+  finally {
+    if (version === reportLoadVersion) {
+      stop();
+      $("results").setAttribute("aria-busy", "false");
+    }
+  }
 }
 async function refreshHistory() {
+  const version = ++historyLoadVersion;
+  busyButton($("refresh-history"), true);
+  $("history").setAttribute("aria-busy", "true");
+  if (!$("history").querySelector("button")) skeleton($("history"), 3);
   try {
     const runs = await request("/api/lab/campaigns");
+    if (version !== historyLoadVersion) return;
     $("history").replaceChildren();
     if (!runs.length) $("history").append(node("p", "No campaigns yet. Your first run will be saved here.", "muted"));
     runs.forEach((run) => {
@@ -172,17 +200,32 @@ async function refreshHistory() {
       button.addEventListener("click", () => loadReport(run.id));
       $("history").append(button);
     });
-  } catch (error) { $("history").replaceChildren(node("p", error.message, "muted")); }
+  } catch (error) {
+    if (version === historyLoadVersion) $("history").replaceChildren(node("p", error.message, "muted"));
+  } finally {
+    if (version === historyLoadVersion) {
+      busyButton($("refresh-history"), false);
+      $("history").setAttribute("aria-busy", "false");
+    }
+  }
 }
 $("campaign-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (running) return;
+  if (running || replayBusy) return;
   const mutations = [...document.querySelectorAll('input[name="mutation"]:checked')].map((input) => input.value);
   if (!mutations.length) { showError(new Error("Select at least one fault to investigate.")); return; }
   running = true;
-  $("run-campaign").disabled = true;
-  $("run-campaign").textContent = "Discovering…";
-  $("progress").hidden = false;
+  busyButton($("run-campaign"), true, "Discovering…");
+  $("campaign-form").setAttribute("aria-busy", "true");
+  $("mutation-options").disabled = true;
+  $("seed").disabled = true;
+  $("budget").disabled = true;
+  $("empty").hidden = true;
+  $("results").hidden = true;
+  const stop = startActivity($("progress"), "Discovery is running",
+    "Searching recovery sequences, reducing failures and checking the correct implementation. Results appear when the engine finishes.",
+    "The engine is still working. Elapsed time is shown; this is not a completion estimate.");
+  $("progress").scrollIntoView({ block: "nearest", behavior: "instant" });
   $("error").hidden = true;
   try {
     const data = await request("/api/lab/campaigns", { method: "POST", body: JSON.stringify({
@@ -194,9 +237,14 @@ $("campaign-form").addEventListener("submit", async (event) => {
   } catch (error) { showError(error); }
   finally {
     running = false;
-    $("run-campaign").disabled = false;
-    $("run-campaign").replaceChildren(document.createTextNode("Run discovery "), node("span", "→"));
-    $("progress").hidden = true;
+    stop();
+    busyButton($("run-campaign"), !controllerReady, "Run discovery →");
+    $("campaign-form").setAttribute("aria-busy", "false");
+    $("mutation-options").disabled = false;
+    $("seed").disabled = false;
+    $("budget").disabled = false;
+    $("results").hidden = !report;
+    $("empty").hidden = Boolean(report);
   }
 });
 $("trace-views").addEventListener("click", (event) => {
@@ -207,9 +255,15 @@ $("trace-views").addEventListener("click", (event) => {
   renderTrace();
 });
 $("replay").addEventListener("click", async () => {
+  if (replayBusy || running) return;
   const finding = report.findings[selected];
   const version = selectionVersion;
-  $("replay").disabled = true;
+  replayBusy = true;
+  busyButton($("replay"), true, "Replaying…");
+  $("run-campaign").disabled = true;
+  const stop = startActivity($("replay-progress"), "Replaying the reduced sequence",
+    "Running the same events against a fresh isolated database.");
+  stopReplayFeedback = stop;
   $("replay-status").textContent = "Replaying in a fresh database…";
   try {
     const result = await request("/api/lab/replay", { method: "POST", body: JSON.stringify({
@@ -221,13 +275,21 @@ $("replay").addEventListener("click", async () => {
       ? `Reproduced: ${expected}. ${result.steps.length} events executed.`
       : "The expected failure did not reproduce. Inspect the downloaded evidence.";
   } catch (error) { if (version === selectionVersion) $("replay-status").textContent = error.message; }
-  finally { if (version === selectionVersion) $("replay").disabled = false; }
+  finally {
+    replayBusy = false;
+    busyButton($("replay"), false, "Replay reduced sequence ↻");
+    $("run-campaign").disabled = !controllerReady;
+    stop();
+  }
 });
 $("refresh-history").addEventListener("click", refreshHistory);
 async function init() {
+  const stop = startActivity($("report-progress"), "Preparing the workbench",
+    "Loading available faults and checking the experiment controller.");
   try {
     const data = await request("/api/lab/catalog");
     catalog = data.mutations;
+    controllerReady = data.controller_ready;
     $("mutation-options").replaceChildren(node("legend", "Faults to investigate"));
     for (const [id, info] of Object.entries(catalog)) {
       const label = node("label", undefined, "mutation");
@@ -239,10 +301,19 @@ async function init() {
     $("engine-status").textContent = data.controller_ready
       ? "Go controller ready · Python replay protocol v1"
       : "Controller missing. Run: python -m payops.lab build, then refresh this page.";
-    $("run-campaign").disabled = !data.controller_ready;
+    $("run-campaign").disabled = !controllerReady;
+    $("mutation-options").setAttribute("aria-busy", "false");
+    stop();
     const id = new URLSearchParams(location.hash.slice(1)).get("run");
     if (id) await loadReport(id);
     else await refreshHistory();
-  } catch (error) { showError(error); $("engine-status").textContent = "Cannot reach the workbench API. Refresh to retry."; }
+  } catch (error) {
+    showError(error);
+    $("engine-status").textContent = "Cannot reach the workbench API. Refresh to retry.";
+    $("mutation-options").replaceChildren(node("legend", "Fault catalog unavailable"));
+    $("mutation-options").setAttribute("aria-busy", "false");
+    $("history").replaceChildren(node("p", "Refresh the page to reconnect.", "muted"));
+    $("history").setAttribute("aria-busy", "false");
+  } finally { stop(); }
 }
 init();

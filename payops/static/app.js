@@ -5,7 +5,10 @@ import {
   singleFlight,
   scenarios,
   statuses,
+  paymentPresentation,
+  preferPaymentSnapshot,
 } from "./core.mjs";
+import { startActivity, busyButton, skeleton } from "./feedback.mjs";
 
 const $ = (id) => document.getElementById(id);
 const drawer = $("drawer");
@@ -19,6 +22,9 @@ let lastUpdate = null,
   returnPaymentId = null,
   submitting = false,
   noticeTimer;
+let trackedPayment = null;
+let journeyFresh = true;
+let stopDetailFeedback = () => {};
 const loadDetails = singleFlight((id) =>
   Promise.allSettled([
     request(`/payments/${encodeURIComponent(id)}`),
@@ -48,6 +54,56 @@ function node(tag, text, className) {
   if (className) el.className = className;
   return el;
 }
+function renderJourney(payment = trackedPayment) {
+  if (payment) payment = preferPaymentSnapshot(trackedPayment, payment);
+  trackedPayment = payment;
+  const state = paymentPresentation(payment);
+  const journey = $("payment-journey");
+  const polling = $("auto-refresh").checked;
+  journey.dataset.tone = state.tone;
+  const sending = payment?.status === "submitting";
+  journey.dataset.active = String(state.active && (sending || (journeyFresh && polling)));
+  const receipt = $("payment-detail").querySelector(".receipt-summary");
+  if (receipt) receipt.dataset.active = journey.dataset.active;
+  $("journey-heading").textContent = state.title;
+  $("journey-copy").textContent = state.detail;
+  $("journey-amount").textContent = payment ? money(payment) : "—";
+  $("journey-open").hidden = !payment?.id;
+  for (const [index, item] of [...$("journey-steps").children].entries()) {
+    item.dataset.state = state.steps[index].state;
+    item.querySelector(".step-marker").textContent = state.steps[index].state === "done" ? "✓" : index + 1;
+    item.querySelector("span:last-child").textContent = state.steps[index].label;
+    if (index === state.stage) item.setAttribute("aria-current", "step");
+    else item.removeAttribute("aria-current");
+  }
+  const live = sending ? "Sending your request. Waiting for acknowledgement."
+    : payment?.status === "unconfirmed" ? "Submission not confirmed. Preserve your key when retrying."
+    : payment && !payment.id ? `${state.title}. Review the request details before retrying.`
+    : !journeyFresh ? "Live updates unavailable. Showing the last confirmed state."
+    : !polling ? "Live updates paused. The payment can continue processing in the background."
+      : state.active ? `${state.title} · checking every 3 seconds`
+        : payment?.id ? `${state.title} · confirmed state from the API` : "Select or submit a payment to follow its progress.";
+  if ($("journey-live").textContent !== live) $("journey-live").textContent = live;
+  updateJourneyClock();
+}
+function updateJourneyClock() {
+  const payment = trackedPayment;
+  if (!payment?.created_at) {
+    $("journey-label").textContent = payment?.status === "submitting" ? "Awaiting receipt" : "Synthetic payments only";
+    return;
+  }
+  const age = Math.max(0, Math.floor((Date.now() - utcDate(payment.created_at).getTime()) / 1000));
+  const active = paymentPresentation(payment).active;
+  $("journey-label").textContent = active
+    ? `${age}s since submission · ${payment.attempts || 0} attempt(s)`
+    : `Payment ${payment.id.slice(0, 8)}`;
+  if (payment.status === "pending" && age >= 15) {
+    $("journey-copy").textContent = "Still waiting for a worker. Your accepted request remains stored; it has not failed.";
+  }
+}
+$("journey-open").addEventListener("click", () => {
+  if (trackedPayment?.id) void openPayment(trackedPayment.id, trackedPayment);
+});
 function statusNode(status) {
   const el = node("span", undefined, "status");
   const dot = node("i", undefined, `dot ${status in statuses ? status : ""}`);
@@ -104,6 +160,7 @@ function renderRows() {
   if (body.dataset.signature === signature) return;
   body.dataset.signature = signature;
   const activeId = document.activeElement?.dataset.paymentId;
+  const previousStates = new Map([...body.children].map((row) => [row.dataset.paymentId, row.dataset.status]));
   body.replaceChildren();
   if (!filtered.length) {
     const cell = node("td", undefined, "empty");
@@ -127,6 +184,9 @@ function renderRows() {
       undefined,
       payment.id === selectedId ? "selected" : "",
     );
+    tr.dataset.paymentId = payment.id;
+    tr.dataset.status = payment.status;
+    if (previousStates.has(payment.id) && previousStates.get(payment.id) !== payment.status) tr.classList.add("row-updated");
     const id = node("td");
     const button = node("button", payment.id.slice(0, 8), "payment-link");
     button.type = "button";
@@ -157,7 +217,11 @@ function renderRows() {
 async function refresh() {
   if (refreshing) return;
   refreshing = true;
-  $("refresh").disabled = true;
+  busyButton($("refresh"), true, "Refreshing…");
+  $("ledger").setAttribute("aria-busy", "true");
+  const stop = !loaded ? startActivity($("ledger-progress"), "Loading your payments",
+    "Connecting to the API and retrieving your ledger.",
+    "The API is taking longer than usual. You can retry if it does not respond.") : () => {};
   try {
     const [payments, health] = await Promise.all([
       request("/payments"),
@@ -165,7 +229,7 @@ async function refresh() {
     ]);
     if (health.data.status !== "ready")
       throw new Error("The database is not ready.");
-    rows = payments.data;
+    rows = payments.data.map((payment) => preferPaymentSnapshot(trackedPayment, payment));
     loaded = true;
     lastUpdate = new Date();
     $("connection").replaceChildren(
@@ -176,7 +240,13 @@ async function refresh() {
       `Updated ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
     $("list-error").hidden = true;
     renderRows();
+    if (trackedPayment?.id) {
+      const current = rows.find((p) => p.id === trackedPayment.id);
+      if (current) { journeyFresh = true; renderJourney(current); }
+    }
   } catch (error) {
+    journeyFresh = false;
+    renderJourney();
     $("connection").replaceChildren(
       node("i", undefined, "dot offline"),
       document.createTextNode("API unavailable"),
@@ -198,7 +268,9 @@ async function refresh() {
     }
   } finally {
     refreshing = false;
-    $("refresh").disabled = false;
+    stop();
+    $("ledger").setAttribute("aria-busy", "false");
+    busyButton($("refresh"), false, "Refresh");
   }
   if (selectedId && drawer.open) await refreshDetail();
 }
@@ -211,6 +283,7 @@ function showDrawer() {
   drawer.scrollTop = 0;
 }
 function openCreate() {
+  stopDetailFeedback();
   selectedId = null;
   detailVersion++;
   $("drawer-title").textContent = "New payment";
@@ -229,6 +302,7 @@ drawer.addEventListener("cancel", (event) => {
   if (submitting) event.preventDefault();
 });
 drawer.addEventListener("close", () => {
+  stopDetailFeedback();
   selectedId = null;
   detailVersion++;
   renderRows();
@@ -248,6 +322,9 @@ function announce(text) {
   }, 10000);
 }
 function renderDetail(payment) {
+  payment = preferPaymentSnapshot(trackedPayment, payment);
+  journeyFresh = true;
+  renderJourney(payment);
   const target = $("payment-detail");
   const signature = JSON.stringify(payment);
   if (target.dataset.signature === signature) return;
@@ -283,6 +360,24 @@ function renderDetail(payment) {
     fields.append(row);
   }
   target.append(fields);
+  const summary = node("section", undefined, "receipt-summary");
+  summary.dataset.tone = paymentPresentation(payment).tone;
+  const presentation = paymentPresentation(payment);
+  summary.dataset.active = $("payment-journey").dataset.active;
+  const symbol = node("span", payment.status === "succeeded" ? "✓" : presentation.active ? "↗" : "!", "receipt-symbol");
+  symbol.setAttribute("aria-hidden", "true");
+  const summaryCopy = node("div");
+  summaryCopy.append(node("strong", presentation.title), node("p", presentation.detail));
+  const miniSteps = node("ol", undefined, "receipt-steps");
+  miniSteps.setAttribute("aria-label", "Payment stages");
+  for (const step of presentation.steps) {
+    const item = node("li", step.label);
+    item.dataset.state = step.state;
+    miniSteps.append(item);
+  }
+  summaryCopy.append(miniSteps);
+  summary.append(symbol, summaryCopy);
+  target.prepend(summary);
 }
 function renderEvents(events) {
   const list = $("events"),
@@ -316,22 +411,39 @@ function renderEvents(events) {
     list.append(item);
   }
 }
-async function refreshDetail() {
+async function refreshDetail(foreground = false) {
   const id = selectedId,
     version = detailVersion;
+  const stop = foreground ? startActivity($("detail-progress"), "Fetching the latest payment state",
+    "Loading the receipt and its processing history.", "Still waiting for the API. You can close this panel and try again.") : () => {};
+  if (foreground) {
+    stopDetailFeedback = stop;
+    $("payment-detail").setAttribute("aria-busy", "true");
+    $("events").setAttribute("aria-busy", "true");
+  }
   const results = await loadDetails(id);
   if (id !== selectedId || version !== detailVersion || !drawer.open) return;
+  stop();
+  $("payment-detail").setAttribute("aria-busy", "false");
+  $("events").setAttribute("aria-busy", "false");
   for (const [index, errorId] of ["detail-error", "events-error"].entries()) {
     const result = results[index],
       errorElement = $(errorId);
     errorElement.hidden = result.status === "fulfilled";
-    if (result.status === "rejected")
+    if (result.status === "rejected") {
       errorElement.textContent = errorMessage(result.reason);
+      if (index === 0) {
+        journeyFresh = false;
+        renderJourney();
+        if (!$("payment-detail").dataset.signature) $("payment-detail").replaceChildren(node("p", "Payment details unavailable. Close this panel and reopen it to retry.", "drawer-intro"));
+      } else if (!$("events").dataset.signature) $("events").replaceChildren(node("li", "Event history could not be loaded."));
+    }
     else if (index === 0) renderDetail(result.value.data);
     else renderEvents(result.value.data);
   }
 }
 async function openPayment(id, initial) {
+  stopDetailFeedback();
   selectedId = id;
   detailVersion++;
   $("drawer-title").textContent = "Payment details";
@@ -341,21 +453,24 @@ async function openPayment(id, initial) {
   $("events-error").hidden = true;
   $("payment-detail").dataset.signature = "";
   $("events").dataset.signature = "";
-  $("payment-detail").replaceChildren(
-    node("p", "Loading payment…", "drawer-intro"),
-  );
-  $("events").replaceChildren();
+  skeleton($("payment-detail"), 5);
+  const historyPlaceholder = node("li");
+  skeleton(historyPlaceholder, 3);
+  $("events").replaceChildren(historyPlaceholder);
   $("event-count").textContent = "";
-  if (initial) renderDetail(initial);
+  const known = initial || rows.find((p) => p.id === id);
+  if (known) renderDetail(known);
   showDrawer();
   $("close-drawer").focus();
   renderRows();
-  await refreshDetail();
+  await refreshDetail(true);
 }
 $("payment-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (submitting) return;
   $("form-error").hidden = true;
+  clearTimeout(noticeTimer);
+  $("announcement").hidden = true;
   let body;
   try {
     body = {
@@ -372,7 +487,12 @@ $("payment-form").addEventListener("submit", async (event) => {
     return;
   }
   submitting = true;
-  $("submit-payment").textContent = "Submitting…";
+  renderJourney({ ...body, status: "submitting" });
+  $("payment-form").setAttribute("aria-busy", "true");
+  const stopSubmission = startActivity($("submission-progress"), "Submitting your payment",
+    "Waiting for the API to acknowledge your request. Your idempotency key is preserved.",
+    "Confirmation is taking longer than usual. Keep this key if you need to retry.");
+  busyButton($("submit-payment"), true, "Submitting…");
   const controls = [
     ...$("payment-form").querySelectorAll("input,select,button"),
   ];
@@ -386,7 +506,8 @@ $("payment-form").addEventListener("submit", async (event) => {
       el.disabled = false;
     });
     $("close-drawer").disabled = false;
-    $("submit-payment").textContent = "Submit payment";
+    busyButton($("submit-payment"), false, "Submit payment");
+    $("payment-form").setAttribute("aria-busy", "false");
   };
   try {
     const result = await request("/payments", {
@@ -409,11 +530,14 @@ $("payment-form").addEventListener("submit", async (event) => {
     void openPayment(result.data.id, result.data);
     void refresh();
   } catch (error) {
+    renderJourney({ ...body, status: error.status === 409 ? "conflict"
+      : [400, 422].includes(error.status) ? "not_submitted" : "unconfirmed" });
     $("form-error").textContent = errorMessage(error);
     $("form-error").hidden = false;
     if (error.status === 409) $("request-options").open = true;
     // Leave input and key intact: a request may have reached the API before a network error.
   } finally {
+    stopSubmission();
     unlock();
   }
 });
@@ -433,6 +557,7 @@ $("search").addEventListener("input", renderRows);
 $("status-filter").addEventListener("change", renderRows);
 $("refresh").addEventListener("click", refresh);
 $("auto-refresh").addEventListener("change", () => {
+  renderJourney();
   if ($("auto-refresh").checked) refresh();
 });
 for (const link of document.querySelectorAll("[data-service]")) {
@@ -449,4 +574,5 @@ document.addEventListener("visibilitychange", () => {
 setInterval(() => {
   if ($("auto-refresh").checked && !document.hidden) refresh();
 }, 3000);
+setInterval(() => { if (!document.hidden) updateJourneyClock(); }, 1000);
 refresh();

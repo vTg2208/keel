@@ -1,0 +1,33 @@
+/* Shared request feedback. No animation is required to understand a state. */
+:root { --motion-enter: cubic-bezier(.22,1,.36,1); }
+.activity-feedback { display:flex;align-items:flex-start;gap:13px;padding:17px 20px;background:#eef4f1;border:1px solid #ceded5;border-radius:5px;margin:0 0 18px;color:#193e34;font-size:13px; }
+.activity-copy { flex:1;min-width:0; }
+.activity-copy strong { font-size:13px;font-weight:550; }
+.activity-copy p { margin:5px 0 0;font-size:12px;line-height:1.65;color:#5d756a; }
+.activity-elapsed { flex:none;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px; }
+.activity-ring,button[aria-busy="true"]::before { display:inline-block;flex:none;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;box-sizing:border-box; }
+.activity-ring { margin-top:2px; }
+button[aria-busy="true"]::before { content:"";width:13px;height:13px;margin-right:8px;vertical-align:-2px; }
+.skeleton-stack { display:grid;gap:13px;width:100%;padding:8px 0; }
+.skeleton-line { display:block;position:relative;overflow:hidden;height:13px;width:100%;background:#e6ecea;border-radius:3px; }
+.skeleton-line:nth-child(3n+2) { width:76%; }
+.skeleton-line:nth-child(3n) { width:89%; }
+.skeleton-line::after { content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#ffffffb3,transparent);transform:translateX(-100%); }
+[data-pending="true"] { opacity:.65; }
+@media(prefers-reduced-motion:no-preference) {
+  .activity-ring,button[aria-busy="true"]::before { animation:feedback-spin .8s linear infinite; }
+  .skeleton-line::after { animation:feedback-scan 1.4s ease-in-out infinite; }
+  button { transition:background-color 160ms ease,border-color 160ms ease; }
+  .activity-feedback { animation:feedback-enter 180ms var(--motion-enter); }
+  @keyframes feedback-spin { to { transform:rotate(360deg); } }
+  @keyframes feedback-scan { to { transform:translateX(100%); } }
+  @keyframes feedback-enter { from { opacity:0;transform:translateY(5px); } to { opacity:1;transform:translateY(0); } }
+}
+.motion-paused *,.motion-paused *::before,.motion-paused *::after { animation-play-state:paused!important; }
+.motion-offscreen *,.motion-offscreen *::before,.motion-offscreen *::after,
+.motion-offscreen::before,.motion-offscreen::after { animation-play-state:paused!important; }
+@media(max-width:600px) {
+  .activity-feedback { padding:14px 13px;gap:10px;flex-wrap:wrap; }
+  .activity-copy { flex-basis:calc(100% - 35px); }
+  .activity-elapsed { margin-left:26px; }
+}

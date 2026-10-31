@@ -9,7 +9,7 @@ reduce it, compare it against the correct implementation, and export a regressio
 These are captioned recordings of actual local runs with synthetic payments. Click a
 preview to open the full MP4 video; the animated previews play directly in the README.
 
-**Payment processing and recovery · 59 seconds** — submit a payment, recover from a temporary
+**Payment processing and recovery · 64 seconds** — submit a payment, recover from a temporary
 provider failure, replay the same request safely, then stop and restart the real
 Compose worker while an accepted payment waits for processing.
 
@@ -17,7 +17,7 @@ Compose worker while an accepted payment waits for processing.
 
 [Watch the full payment demo (MP4)](docs/demos/keel-payment-recovery.mp4)
 
-**Failure discovery · 60 seconds** — expose four deliberate defects, inspect a duplicate provider
+**Failure discovery · 65 seconds** — expose four deliberate defects, inspect a duplicate provider
 effect, compare it with the correct implementation, reduce the failure to six events,
 replay it, and export an executable regression test.
 
@@ -157,6 +157,19 @@ Open the [payment console](http://127.0.0.1:8000/) and choose **New payment**. E
 Under **Request options**, an idempotency key is generated for each new payment. Reusing a key with identical input returns the original payment; changed input shows a conflict. Interrupted submissions preserve their input and key so they can be retried safely. Grafana and Alertmanager links require the monitoring profile.
 
 The frontend is ordinary HTML, CSS, and JavaScript served by FastAPI from `payops/static`; no separate frontend server or build step is required. Its font is bundled locally under the included OFL license. Run `node --test tests/frontend.test.mjs` for the optional JavaScript helper checks, alongside `python ops.py test` and `python ops.py lint`.
+
+The payment journey animates from confirmed API states: receipt, waiting, provider
+processing and outcome. Pending work and retries remain visibly active; completed,
+declined, failed and uncertain outcomes have distinct feedback. Loading skeletons,
+busy buttons and elapsed request indicators cover initial loads, submission, payment
+details, campaign execution, saved reports and replay. Paused or unavailable updates
+are labeled explicitly. Reduced-motion preferences disable movement while retaining
+all status information. No animation invents a completion percentage or delays a result.
+
+To exercise delayed responses and failures in Chromium, start the standalone lab,
+make Playwright available as described in [the recording guide](docs/demos/README.md),
+and run `node scripts/verify_frontend.cjs`. These browser checks use controlled test
+responses; the README demo recordings use the real local application.
 
 ```bash
 curl -s http://127.0.0.1:8000/payments \

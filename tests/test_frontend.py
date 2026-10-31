@@ -9,7 +9,7 @@ def test_console_and_assets_are_served(sessions):
         assert page.status_code == 200
         assert "text/html" in page.headers["content-type"]
         assert 'id="payment-form"' in page.text
-        for asset in ("app.js", "core.mjs", "style.css"):
+        for asset in ("app.js", "core.mjs", "style.css", "feedback.mjs", "motion.css"):
             response = client.get(f"/assets/{asset}")
             assert response.status_code == 200
         assert client.get("/assets/missing.js").status_code == 404

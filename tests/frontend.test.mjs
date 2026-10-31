@@ -5,7 +5,49 @@ import {
   utcDate,
   filterPayments,
   singleFlight,
+  paymentPresentation,
+  preferPaymentSnapshot,
 } from "../payops/static/core.mjs";
+
+test("late ledger and receipt responses cannot rewind a newer confirmed state", () => {
+  const pending = { id: "one", status: "pending", attempts: 0, updated_at: "2026-10-31T12:00:00" };
+  const success = { ...pending, status: "succeeded", attempts: 1, updated_at: "2026-10-31T12:00:02" };
+  assert.equal(preferPaymentSnapshot(success, pending), success);
+  assert.equal(preferPaymentSnapshot(pending, success), success);
+  assert.equal(preferPaymentSnapshot(null, pending), pending);
+  const other = { ...pending, id: "two" };
+  assert.equal(preferPaymentSnapshot(success, other), other);
+  assert.equal(preferPaymentSnapshot(success, { ...pending, updated_at: success.updated_at }), success);
+});
+
+test("payment journey follows real status without claiming success during waiting or retries", () => {
+  for (const status of ["pending", "processing", "retrying"]) {
+    const state = paymentPresentation({ status, attempts: 2 });
+    assert.equal(state.active, true);
+    assert.notEqual(state.tone, "success");
+    assert.equal(state.steps.length, 4);
+    assert.equal(state.steps.filter((s) => s.state === "current").length, 1);
+  }
+  assert.equal(paymentPresentation({ status: "pending" }).stage, 1);
+  assert.equal(paymentPresentation({ status: "processing" }).stage, 2);
+  assert.match(paymentPresentation({ status: "retrying", attempts: 2 }).detail, /2/);
+});
+
+test("payment outcomes and unconfirmed submissions retain their distinct meanings", () => {
+  const success = paymentPresentation({ status: "succeeded" });
+  assert.equal(success.tone, "success");
+  assert.equal(success.active, false);
+  assert.ok(success.steps.every((s) => s.state === "done"));
+  for (const status of ["rejected", "failed", "unknown", "unconfirmed"]) {
+    const state = paymentPresentation({ status });
+    assert.equal(state.active, false);
+    assert.notEqual(state.tone, "success");
+  }
+  assert.match(paymentPresentation({ status: "unknown" }).detail, /reconcil/i);
+  assert.match(paymentPresentation({ status: "unconfirmed" }).detail, /same.*key/i);
+  assert.equal(paymentPresentation(null).stage, -1);
+  assert.equal(paymentPresentation({ status: "unexpected" }).tone, "review");
+});
 
 test("converts decimal money exactly and rejects invalid or excessive amounts", () => {
   assert.equal(toMinor("0.29"), 29);

@@ -7,6 +7,7 @@
   <title>Keel · Failure discovery</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/assets/lab.css" />
+  <link rel="stylesheet" href="/assets/motion.css" />
   <script type="module" src="/assets/lab.js"></script>
 </head>
 <body>
@@ -22,7 +23,7 @@
       <h2>Put recovery<br />to the test.</h2>
       <p class="sidebar-intro">Introduce a fault. Find the sequence that exposes it. Keep the evidence.</p>
       <form id="campaign-form">
-        <fieldset id="mutation-options"><legend>Faults to investigate</legend><p>Loading fault catalog…</p></fieldset>
+        <fieldset id="mutation-options" aria-busy="true"><legend>Faults to investigate</legend><div class="skeleton-stack" aria-hidden="true"><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div><p class="muted">Loading fault catalog…</p></fieldset>
         <div class="input-pair">
           <label>Seed<input id="seed" type="number" value="42" min="0" max="2147483647" required /></label>
           <label>Search budget<input id="budget" type="number" value="8" min="1" max="32" required /></label>
@@ -32,13 +33,14 @@
       </form>
       <div id="engine-status" class="engine-status" role="status">Checking controller…</div>
       <div class="history-head"><span class="section-label">Saved campaigns</span><button id="refresh-history" class="quiet" aria-label="Refresh saved campaigns">↻</button></div>
-      <div id="history" class="history"><p class="muted">Loading history…</p></div>
+      <div id="history" class="history" aria-busy="true"><div class="skeleton-stack" aria-hidden="true"><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div><p class="muted">Loading history…</p></div>
       <p class="isolation-note"><span class="status-dot" aria-hidden="true"></span> Isolated by construction<br /><span>Fresh SQLite per replay. No live payments touched.</span></p>
     </aside>
     <main id="workspace" tabindex="-1">
       <div class="workspace-heading"><div><div class="section-label">02 / Investigate</div><h1>Find the fault line.</h1><p>Discover the smallest sequence that breaks a payment guarantee.</p></div><span class="lab-tag">Experimental lab</span></div>
       <div id="error" class="notice error" role="alert" hidden></div>
-      <div id="progress" class="notice progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><div><strong>Exploring recovery sequences…</strong><p>Go is coordinating isolated Python executions, checking invariants and removing unnecessary events.</p></div></div>
+      <div id="report-progress" hidden></div>
+      <div id="progress" class="campaign-loading" role="status" hidden></div>
       <section id="empty" class="empty-state" aria-label="Getting started">
         <div class="empty-number" aria-hidden="true">↳</div>
         <h2>A healthy process can still<br />produce an incorrect payment.</h2>
@@ -62,6 +64,7 @@
             <div id="state-grid" class="state-grid"></div>
             <details class="raw-evidence"><summary>Inspect raw execution evidence</summary><pre id="raw-state"></pre></details>
             <div class="replay-row"><button id="replay" class="secondary">Replay reduced sequence ↻</button><span id="replay-status" role="status"></span></div>
+            <div id="replay-progress" hidden></div>
           </div>
         </article>
       </section>

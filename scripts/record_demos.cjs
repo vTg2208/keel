@@ -16,7 +16,7 @@ async function setup(browser, name) {
     viewport: { width: 1280, height: 900 },
     recordVideo: { dir: raw, size: { width: 1280, height: 900 } },
     acceptDownloads: true,
-    reducedMotion: "reduce",
+    reducedMotion: "no-preference",
   });
   await context.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
