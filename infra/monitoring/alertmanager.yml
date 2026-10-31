@@ -1,0 +1,8 @@
+route:
+  receiver: local-ui
+  group_by: [alertname, job]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 4h
+receivers:
+  - name: local-ui

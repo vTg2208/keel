@@ -1,0 +1,38 @@
+groups:
+  - name: payops
+    rules:
+      - alert: PayOpsProcessDown
+        expr: up{job=~"api|worker|publisher|rabbitmq"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: 'PayOps {{ $labels.job }} is unreachable'}
+      - alert: PayOpsWorkerStalled
+        expr: time() - payops_heartbeat_timestamp{role="worker"} > 30
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: 'Worker has stopped making progress'}
+      - alert: PayOpsPublisherStalled
+        expr: time() - payops_heartbeat_timestamp{role="publisher"} > 30
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: 'Publisher has stopped making progress'}
+      - alert: PayOpsBacklog
+        expr: sum(rabbitmq_queue_messages_ready{queue="payops.payments"}) > 0
+        for: 45s
+        labels: {severity: warning}
+        annotations: {summary: 'Payment queue has a sustained backlog'}
+      - alert: PayOpsOutboxBacklog
+        expr: payops_outbox_pending > 10
+        for: 45s
+        labels: {severity: warning}
+        annotations: {summary: 'Unpublished outbox events are accumulating'}
+      - alert: PayOpsDeadLetters
+        expr: sum(rabbitmq_queue_messages{queue="payops.dead"}) > 0
+        for: 10s
+        labels: {severity: warning}
+        annotations: {summary: 'Inspect the dead-letter queue and payment history'}
+      - alert: PayOpsApiErrors
+        expr: sum(rate(payops_http_requests_total{status=~"5.."}[1m])) > 0.1
+        for: 30s
+        labels: {severity: warning}
+        annotations: {summary: 'Payment API has sustained server errors'}
