@@ -1,4 +1,82 @@
-# PayOps
+# Keel
+
+Keel combines a payment operations lab with a **failure-discovery workbench**: introduce
+a deliberately faulty recovery adapter, find a sequence that breaks a payment guarantee,
+reduce it, compare it against the correct implementation, and export a regression test.
+
+## Failure discovery: start here
+
+Requires Python 3.11+ and Go 1.25+. Use the existing virtual environment below or create
+one and install `requirements.lock` plus `pip install -e '.[dev]'`.
+No Docker, cloud account, PostgreSQL server or RabbitMQ server is needed for this feature.
+
+```powershell
+.\.venv\Scripts\python.exe -m payops.lab build
+.\.venv\Scripts\python.exe -m payops.lab serve --port 8010
+```
+
+On Linux/WSL, use `python` from the activated virtual environment. Open
+[the Keel workbench](http://127.0.0.1:8010/lab), leave all four faults selected, use seed
+`42` and budget `8`, and choose **Run discovery**. Select a finding, switch between
+the original/reduced/correct executions, inspect individual events, then replay it.
+JSON evidence, a Markdown incident report and executable pytest tests are downloadable.
+Saved campaigns survive restarts in ignored `.local/lab-history.db`.
+
+The standalone server is for isolated experiments; it does not start the payment
+workers described later in this README. In the full application, `/lab` uses the
+application database only for campaign history. Run the additive schema migration
+when upgrading an existing installation (`docker compose run --rm migrate`); a normal
+Kubernetes deployment already runs it. Experiments always use separate in-memory databases.
+
+```bash
+python -m payops.lab build
+python -m payops.lab run --seed 42 --budget 8 --require-all
+# The command prints an artifact directory containing report.json, report.md,
+# and test_regression.py. Run the exact printed test path:
+python -m pytest .local/lab-artifacts/<campaign-id>/test_regression.py -q
+# Prove that a particular regression test rejects its faulty implementation:
+KEEL_MUTATION=unstable_provider_key python -m pytest \
+  .local/lab-artifacts/<campaign-id>/test_regression.py -q -k unstable_provider_key
+```
+
+The last command intentionally fails an assertion. In PowerShell set
+`$env:KEEL_MUTATION='unstable_provider_key'` first and remove it afterward with
+`Remove-Item Env:KEEL_MUTATION`.
+
+| Boundary | Deliberate lab defect | Observed guarantee |
+|---|---|---|
+| Database / publisher | Omit the accepted payment's outbox intent | Waiting payments retain processing intent |
+| Broker / worker | Acknowledge before saving the result | Result commits before delivery acknowledgement |
+| Worker / provider | Change provider identity between attempts | At most one successful provider effect |
+| Worker / database | Bypass the newer lease's ownership | Stale worker results are fenced |
+
+**Go** generates bounded, seeded schedules and reduces counterexamples. **Python**
+executes the actual SQLAlchemy domain operations, outbox publisher and provider HTTP
+endpoint inside a fresh SQLite database. **JavaScript** displays the evidence. They
+communicate through a versioned JSON-lines protocol; no third-party Go packages or
+frontend framework are needed. See [workbench architecture](docs/failure-discovery.md).
+
+The broker and crash/lease boundaries are controlled adapters, not real broker/network
+faults. Faulty adapters are lab-only and never patch the normal application. Passing
+this lab does not verify PostgreSQL locking, distributed timing, or production safety.
+The reducer guarantees **1-minimality for the same invariant**: deleting any single
+remaining event removes that violation. It does not promise a globally shortest trace.
+A surviving mutant means no failure was found within the selected search budget.
+
+```bash
+go test ./...
+go vet ./...
+python -m pytest tests/test_lab_replay.py tests/test_lab_api.py -q
+```
+
+The Docker image compiles and includes the Go controller automatically. Jenkins runs
+the Go, Python and JavaScript suites, executes a discovery campaign, and archives its
+artifacts. Rebuild the Jenkins image to install the added Go and Node runtimes.
+
+## Payment operations lab
+
+Internal Python package, image tags, metrics, dashboards and cluster resource names
+retain `payops` for compatibility with existing installations.
 
 A local payment reliability and DevOps lab. It processes **synthetic payments only**, using FastAPI, PostgreSQL, a transactional outbox, RabbitMQ, a worker, and an idempotent provider simulator. Docker Compose supports development; kind supports Kubernetes operations. Jenkins builds and validates releases outside the application cluster. Prometheus, Grafana, Alertmanager, Loki, and Alloy provide local observability.
 

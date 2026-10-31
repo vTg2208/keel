@@ -27,7 +27,19 @@ pipeline {
       }
     }
     stage('Lint and test') {
-      steps { sh '.venv/bin/python ops.py lint && .venv/bin/python ops.py test' }
+      steps {
+        sh '''
+          go test ./...
+          go vet ./...
+          .venv/bin/python -m payops.lab build
+          .venv/bin/python ops.py lint
+          .venv/bin/python ops.py test
+          node --test tests/frontend.test.mjs
+        '''
+      }
+    }
+    stage('Payment recovery discovery') {
+      steps { sh '.venv/bin/python -m payops.lab run --seed 42 --budget 8 --require-all' }
     }
     stage('Build release') {
       steps { sh '.venv/bin/python ops.py build --tag build-$BUILD_NUMBER' }
@@ -47,6 +59,8 @@ pipeline {
     }
   }
   post {
-    always { archiveArtifacts artifacts: '.local/smoke-results.json', allowEmptyArchive: true }
+    always {
+      archiveArtifacts artifacts: '.local/smoke-results.json,.local/lab-artifacts/**/*', allowEmptyArchive: true
+    }
   }
 }
